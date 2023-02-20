@@ -297,6 +297,23 @@ int main(int argc, char** argv)
     bmGenerator BM;
     ros::spin();
 
+    // save residual map after ros::shutdown()
+    boost::format saveFormat("%03d.pcd");
+
+    pcl::PointCloud<PointType>::Ptr tempMap(new pcl::PointCloud<PointType>());
+    pcl::copyPointCloud(BM.blockMap, *tempMap);
+    pcl::PointCloud<PointType>::Ptr outputCloud(new pcl::PointCloud<PointType>());
+    BM.downSizeFilterBlockMap.setInputCloud(tempMap);
+    BM.downSizeFilterBlockMap.filter(*outputCloud);
+    pcl::io::savePCDFileBinary(std::getenv("HOME") + BM.datasetDIR + (saveFormat % BM.blockID).str(), *outputCloud);
+
+    Eigen::Vector4d centroid;
+    pcl::compute3DCentroid(BM.blockMap, centroid);
+    PointType centroidPoint;
+    centroidPoint.x = centroid[0];
+    centroidPoint.y = centroid[1];
+    centroidPoint.z = centroid[2];
+    BM.centroidCloud->push_back(centroidPoint);
     pcl::io::savePCDFileBinary(std::getenv("HOME") + BM.datasetDIR + "CentroidCloud.pcd", *(BM.centroidCloud));
 
     return 0;
