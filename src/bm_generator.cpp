@@ -36,6 +36,7 @@ public:
     std::queue<std::pair<double, Eigen::Matrix4d>> gtData;
     Eigen::Matrix4d lastPose;   // record transformation matrix of last frame
     Eigen::Matrix4d prevPose;   // record transformation matrix of previous frame for pose comparison
+    Eigen::Matrix4d R_gt_l;
 
     int numberOfCores;
     int keyCount;
@@ -44,14 +45,16 @@ public:
     double minTdiff;
     bool firstStamp{true};
     bool updatePrevPoseFlag{true};
-    float downSampleValue;
-    pcl::VoxelGrid<PointType> downSizeFilter;
+    float downSampleValueGlobalMap;
+    float downSampleValueBlockMap;
+    pcl::VoxelGrid<PointType> downSizeFilterGlobalMap;
+    pcl::VoxelGrid<PointType> downSizeFilterBlockMap;
     string gmFileName;
     pcl::PointCloud<PointType>::Ptr globalMap;
 
     float blockSize;
     int blockID;
-    pcl::PointCloud<PointType>::Ptr blockMap;
+    pcl::PointCloud<PointType> blockMap;
     vector<pcl::PointCloud<PointType>::Ptr> bmVec;
     pcl::PointCloud<PointType>::Ptr centroidCloud;
     pcl::KdTreeFLANN<PointType>::Ptr centroidKDTree;
@@ -62,7 +65,8 @@ public:
         nh.param<std::string>("datasetDIR", datasetDIR, "/shared_volume/bloc_dataset/nclt/20130110/");
         nh.param<std::string>("gtFileName", gtFileName, "gt_2013-01-10.txt");
         nh.param<int>("numberOfCores", numberOfCores, 2);
-        nh.param<float>("downSampleValue", downSampleValue, 0.4);
+        nh.param<float>("downSampleValueGlobalMap", downSampleValueGlobalMap, 0.4);
+        nh.param<float>("downSampleValueBlockMap", downSampleValueBlockMap, 0.2);
         nh.param<float>("blockSize", blockSize, 50.0);
 
         initializeParams();
@@ -127,14 +131,16 @@ public:
 
     void initializeParams()
     {
-        keyCount = 0;
-        blockID = 0;
         globalMap.reset(new pcl::PointCloud<PointType>());
-        blockMap.reset(new pcl::PointCloud<PointType>());
         centroidCloud.reset(new pcl::PointCloud<PointType>());
         centroidKDTree.reset(new pcl::KdTreeFLANN<PointType>());
+        blockMap.clear();
         gmFileName = std::getenv("HOME") + datasetDIR + "GlobalMap.pcd";
-        downSizeFilter.setLeafSize(downSampleValue, downSampleValue, downSampleValue);
+        downSizeFilterGlobalMap.setLeafSize(downSampleValueGlobalMap, downSampleValueGlobalMap, downSampleValueGlobalMap);
+        downSizeFilterBlockMap.setLeafSize(downSampleValueBlockMap, downSampleValueBlockMap, downSampleValueBlockMap);
+        R_gt_l << 0, -1, 0, 0, -1, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1;
+        keyCount = 0;
+        blockID = 0;
     }
 
     void loadGroundTruth()
@@ -159,58 +165,41 @@ public:
         ROS_INFO("load %ld pose pairs", gtData.size());
     }
 
-    pcl::PointCloud<PointType>::Ptr transformPointCloud(pcl::PointCloud<PointType>::Ptr cloudIn, Eigen::Matrix4d transformIn)
-    {
-        pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
-
-        int cloudSize = cloudIn->size();
-        cloudOut->resize(cloudSize);
-
-        #pragma omp parallel for num_threads(numberOfCores)
-        for (int i = 0; i < cloudSize; ++i)
-        {
-            const auto &pointFrom = cloudIn->points[i];
-
-            // Points_w = T_w_gt * T_gt_l * Points_l, so 'x y z' change the order and has minus before them
-            cloudOut->points[i].x = -transformIn(0,1) * pointFrom.x - transformIn(0,0) * pointFrom.y - transformIn(0,2) * pointFrom.z + transformIn(0,3);
-            cloudOut->points[i].y = -transformIn(1,1) * pointFrom.x - transformIn(1,0) * pointFrom.y - transformIn(1,2) * pointFrom.z + transformIn(1,3);
-            cloudOut->points[i].z = -transformIn(2,1) * pointFrom.x - transformIn(2,0) * pointFrom.y - transformIn(2,2) * pointFrom.z + transformIn(2,3);
-            cloudOut->points[i].intensity = pointFrom.intensity;
-        }
-        return cloudOut;
-    }
-
     void saveGlobalMap(pcl::PointCloud<PointType>::Ptr cloudIn)
     {
         *globalMap += *transformPointCloud(cloudIn, lastPose);
         pcl::PointCloud<PointType>::Ptr outputCloud(new pcl::PointCloud<PointType>());
-        downSizeFilter.setInputCloud(globalMap);
-        downSizeFilter.filter(*outputCloud);
-        ROS_INFO("global map points size: %ld", outputCloud->size());
+        downSizeFilterGlobalMap.setInputCloud(globalMap);
+        downSizeFilterGlobalMap.filter(*outputCloud);
         pcl::io::savePCDFileBinary(gmFileName, *outputCloud);
     }
 
-    void saveBlockMap(int saveID, pcl::PointCloud<PointType>::Ptr cloudIn)
+    void saveBlockMap(int saveID)
     {
         boost::format saveFormat("%03d.pcd");
         pcl::PointCloud<PointType>::Ptr outputCloud(new pcl::PointCloud<PointType>());
-        downSizeFilter.setInputCloud(cloudIn);
-        downSizeFilter.filter(*outputCloud);
+        downSizeFilterBlockMap.setInputCloud(bmVec.at(saveID));
+        downSizeFilterBlockMap.filter(*outputCloud);
         pcl::io::savePCDFileBinary(std::getenv("HOME") + datasetDIR + (saveFormat % saveID).str(), *outputCloud);
+        cout << "BM ID: " << saveID << " Cloud size before DS: " << bmVec.at(saveID)->size() << " After DS: " << outputCloud->size() << "\nBMVector: " << endl;
+        for (int i = 0; i < bmVec.size(); i++)
+        {
+            cout << "BM ID: " << i << " Cloud size: " << bmVec.at(i)->size() << endl;
+        }
     }
 
     void generateBlockMap(pcl::PointCloud<PointType>::Ptr cloudIn)
     {
         if (pow((lastPose(0,3) - prevPose(0,3)), 2) + pow((lastPose(1,3) - prevPose(1,3)), 2) + pow((lastPose(3,3) - prevPose(3,3)), 2) < blockSize * blockSize)
         {
-            *blockMap += *transformPointCloud(cloudIn, lastPose);
+            blockMap += *transformPointCloud(cloudIn, lastPose);
         }
         else
         {
             prevPose = lastPose;    // update the 1st pose of a new block map
 
             Eigen::Vector4d centroid;
-            pcl::compute3DCentroid(*blockMap, centroid);
+            pcl::compute3DCentroid(blockMap, centroid);
             PointType centroidPoint;
             centroidPoint.x = centroid[0];
             centroidPoint.y = centroid[1];
@@ -218,10 +207,12 @@ public:
 
             vector<int> pointIdxNKNSearch;
             vector<float> pointDistNKNSearch;
+            pcl::PointCloud<PointType>::Ptr tempMap(new pcl::PointCloud<PointType>());
+            pcl::copyPointCloud(blockMap, *tempMap);
             if (blockID == 1)   // 2nd block map, no need to check kd-tree
             {
-                saveBlockMap(blockID, blockMap);
-                bmVec.push_back(blockMap);
+                bmVec.push_back(tempMap);
+                saveBlockMap(blockID);
                 centroidCloud->push_back(centroidPoint);
                 centroidKDTree->setInputCloud(centroidCloud);
             }
@@ -231,13 +222,15 @@ public:
                 pointDistNKNSearch.clear();
                 centroidKDTree->nearestKSearch(centroidPoint, 1, pointIdxNKNSearch, pointDistNKNSearch);
                 float nearestDist = sqrt(pointDistNKNSearch[0]);
-                cout << "nearestDist: " << nearestDist << endl;
+                // cout << "nearestDist: " << nearestDist << endl;
                 if (nearestDist < 0.5 * blockSize && nearestDist > 0.1 * blockSize)
                 {
                     // add overlapping block to old block and recalculate centroid
-                    cout << "\nDistance from the nearest BM is " << nearestDist << "m which is shorter than the half of blocksize. BM No." << blockID << " is merged into No." << pointIdxNKNSearch[0];
-                    *(bmVec.at(pointIdxNKNSearch[0])) += *blockMap;
-                    saveBlockMap(pointIdxNKNSearch[0], bmVec.at(pointIdxNKNSearch[0]));
+                    cout << "\nDistance from the nearest BM is " << nearestDist << "m which is shorter than the half of blocksize. BM No." << blockID << " is merged into No." << pointIdxNKNSearch[0] << endl;
+                    cout << "before merging, the size of bm: " << bmVec.at(pointIdxNKNSearch[0])->size() << endl;
+                    *(bmVec.at(pointIdxNKNSearch[0])) += *tempMap;
+                    cout << "after merging, the size of bm: " << bmVec.at(pointIdxNKNSearch[0])->size() << endl;
+                    saveBlockMap(pointIdxNKNSearch[0]);
 
                     Eigen::Vector4d newCentroid;
                     pcl::compute3DCentroid(*(bmVec.at(pointIdxNKNSearch[0])), newCentroid);
@@ -253,22 +246,48 @@ public:
                 }
                 else 
                 {
-                    saveBlockMap(blockID, blockMap);
-                    bmVec.push_back(blockMap);
+                    bmVec.push_back(tempMap);
+                    saveBlockMap(blockID);
                     centroidCloud->push_back(centroidPoint);
                     centroidKDTree->setInputCloud(centroidCloud);
                 }
             }
             else // blockID == 0, 1st block map
             {
-                saveBlockMap(blockID, blockMap);
-                bmVec.push_back(blockMap);
+                bmVec.push_back(tempMap);
+                saveBlockMap(blockID);
                 centroidCloud->push_back(centroidPoint);
             }
             blockID += 1;
 
-            blockMap->clear();
+            blockMap.clear();
         }
+    }
+
+    pcl::PointCloud<PointType>::Ptr transformPointCloud(pcl::PointCloud<PointType>::Ptr cloudIn, Eigen::Matrix4d transformIn)
+    {
+        pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
+        int cloudSize = cloudIn->size();
+        cloudOut->resize(cloudSize);
+
+        // R_w_gt is known. P_l denotes the pointcloud in lidar frame. 
+        // R_w_l = R_w_gt * R_gt_l.
+        // R_gt_l = [ 0 -1  0 
+        //           -1  0  0
+        //            0  0 -1]
+        // Eigen::Matrix4d transformation = transformIn * R_gt_l;
+
+        #pragma omp parallel for num_threads(numberOfCores)
+        for (int i = 0; i < cloudSize; ++i)
+        {
+            const auto &pointFrom = cloudIn->points[i];
+
+            cloudOut->points[i].x = transformIn(0,0) * pointFrom.x + transformIn(0,1) * pointFrom.y + transformIn(0,2) * pointFrom.z + transformIn(0,3);
+            cloudOut->points[i].y = transformIn(1,0) * pointFrom.x + transformIn(1,1) * pointFrom.y + transformIn(1,2) * pointFrom.z + transformIn(1,3);
+            cloudOut->points[i].z = transformIn(2,0) * pointFrom.x + transformIn(2,1) * pointFrom.y + transformIn(2,2) * pointFrom.z + transformIn(2,3);
+            cloudOut->points[i].intensity = pointFrom.intensity;
+        }
+        return cloudOut;
     }
 };
 

@@ -1,5 +1,6 @@
-datasetDIR: "/shared_volume/bloc_dataset/nclt/20130110/"
-gtFileName: "gt_2013-01-10.txt"
+datasetDIR: "/arx_env_shared_volume/bloc_dataset/nclt/20120429/"
+gtFileName: "fastlio2_poses_2012-04-29.txt"
 numberOfCores: 4
-downSampleValue: 0.2
-blockSize: 50
+downSampleValueGlobalMap: 0.4
+downSampleValueBlockMap: 0.2
+blockSize: 100
