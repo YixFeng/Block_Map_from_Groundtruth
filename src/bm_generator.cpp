@@ -54,6 +54,7 @@ public:
 
     float blockSize;
     int blockID;
+    unsigned long long int sumOfPoints;
     pcl::PointCloud<PointType> blockMap;
     vector<pcl::PointCloud<PointType>::Ptr> bmVec;
     pcl::PointCloud<PointType>::Ptr centroidCloud;
@@ -141,6 +142,7 @@ public:
         R_gt_l << 0, -1, 0, 0, -1, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1;
         keyCount = 0;
         blockID = 0;
+        sumOfPoints = 0;
     }
 
     void loadGroundTruth()
@@ -211,6 +213,7 @@ public:
             pcl::copyPointCloud(blockMap, *tempMap);
             if (blockID == 1)   // 2nd block map, no need to check kd-tree
             {
+                sumOfPoints += tempMap->size();
                 bmVec.push_back(tempMap);
                 saveBlockMap(blockID);
                 centroidCloud->push_back(centroidPoint);
@@ -228,7 +231,9 @@ public:
                     // add overlapping block to old block and recalculate centroid
                     cout << "\nDistance from the nearest BM is " << nearestDist << "m which is shorter than the half of blocksize. BM No." << blockID << " is merged into No." << pointIdxNKNSearch[0] << endl;
                     cout << "before merging, the size of bm: " << bmVec.at(pointIdxNKNSearch[0])->size() << endl;
+                    sumOfPoints -= bmVec.at(pointIdxNKNSearch[0])->size();
                     *(bmVec.at(pointIdxNKNSearch[0])) += *tempMap;
+                    sumOfPoints += bmVec.at(pointIdxNKNSearch[0])->size();
                     cout << "after merging, the size of bm: " << bmVec.at(pointIdxNKNSearch[0])->size() << endl;
                     saveBlockMap(pointIdxNKNSearch[0]);
 
@@ -246,6 +251,7 @@ public:
                 }
                 else 
                 {
+                    sumOfPoints += tempMap->size();
                     bmVec.push_back(tempMap);
                     saveBlockMap(blockID);
                     centroidCloud->push_back(centroidPoint);
@@ -254,6 +260,7 @@ public:
             }
             else // blockID == 0, 1st block map
             {
+                sumOfPoints += tempMap->size();
                 bmVec.push_back(tempMap);
                 saveBlockMap(blockID);
                 centroidCloud->push_back(centroidPoint);
@@ -302,18 +309,21 @@ int main(int argc, char** argv)
 
     pcl::PointCloud<PointType>::Ptr tempMap(new pcl::PointCloud<PointType>());
     pcl::copyPointCloud(BM.blockMap, *tempMap);
-    pcl::PointCloud<PointType>::Ptr outputCloud(new pcl::PointCloud<PointType>());
-    BM.downSizeFilterBlockMap.setInputCloud(tempMap);
-    BM.downSizeFilterBlockMap.filter(*outputCloud);
-    pcl::io::savePCDFileBinary(std::getenv("HOME") + BM.datasetDIR + (saveFormat % BM.blockID).str(), *outputCloud);
+    if (tempMap->size() > 0.5 * BM.sumOfPoints / BM.blockID)
+    {
+        pcl::PointCloud<PointType>::Ptr outputCloud(new pcl::PointCloud<PointType>());
+        BM.downSizeFilterBlockMap.setInputCloud(tempMap);
+        BM.downSizeFilterBlockMap.filter(*outputCloud);
+        pcl::io::savePCDFileBinary(std::getenv("HOME") + BM.datasetDIR + (saveFormat % BM.blockID).str(), *outputCloud);
 
-    Eigen::Vector4d centroid;
-    pcl::compute3DCentroid(BM.blockMap, centroid);
-    PointType centroidPoint;
-    centroidPoint.x = centroid[0];
-    centroidPoint.y = centroid[1];
-    centroidPoint.z = centroid[2];
-    BM.centroidCloud->push_back(centroidPoint);
+        Eigen::Vector4d centroid;
+        pcl::compute3DCentroid(BM.blockMap, centroid);
+        PointType centroidPoint;
+        centroidPoint.x = centroid[0];
+        centroidPoint.y = centroid[1];
+        centroidPoint.z = centroid[2];
+        BM.centroidCloud->push_back(centroidPoint);
+    }
     pcl::io::savePCDFileBinary(std::getenv("HOME") + BM.datasetDIR + "CentroidCloud.pcd", *(BM.centroidCloud));
 
     return 0;
