@@ -23,7 +23,7 @@ find_package(PCL REQUIRED QUIET)
 find_package(Boost REQUIRED)
 
 catkin_package(
-  INCLUDE_DIRS
+  INCLUDE_DIRS include
   DEPENDS PCL
 
   CATKIN_DEPENDS
@@ -36,12 +36,14 @@ catkin_package(
 
 # include directories
 include_directories(
+  include
 	${catkin_INCLUDE_DIRS}
 	${PCL_INCLUDE_DIRS}
 )
 
 # link directories
 link_directories(
+  include
 	${PCL_LIBRARY_DIRS}
 )
 
