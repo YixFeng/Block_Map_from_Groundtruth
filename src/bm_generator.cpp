@@ -21,10 +21,15 @@
 #include <vector>
 #include <queue>
 #include <string>
-
+#define TransMAT_FROM_ARRAY(v)   v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],v[9],v[10],v[11],v[12],v[13],v[14],v[15]
+#define MAT_FROM_ARRAY(v)        v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8]
+#define VEC_FROM_ARRAY(v)        v[0],v[1],v[2]
 using namespace std;
 using PointType = pcl::PointXYZI;
 using PointXYZ = pcl::PointXYZ;
+vector<double>  vec_gt_R_L(9, 0.0);
+vector<double>  vec_gt_trans_L(3, 0.0);
+vector<double>  vec_L_T_gt(16, 0.0);
 
 class bmGenerator
 {
@@ -35,10 +40,14 @@ public:
     // gt poses
     string datasetDIR;
     string gtFileName;
+    string pl_topic;
     std::queue<std::pair<double, Eigen::Matrix4d>> gtData;
     Eigen::Matrix4d lastPose;   // record transformation matrix of last frame
     Eigen::Matrix4d prevPose;   // record transformation matrix of previous frame for pose comparison
-    Eigen::Matrix4d R_gt_l;
+    Eigen::Matrix4d L_T_gt;
+    Eigen::Matrix3d gt_R_L;
+    Eigen::Vector3d gt_trans_L;
+    ofstream fout_pose;
 
     int numberOfCores;
     int keyCount;
@@ -71,16 +80,27 @@ public:
     {
         nh.param<std::string>("datasetDIR", datasetDIR, "/shared_volume/bloc_dataset/nclt/20130110/");
         nh.param<std::string>("gtFileName", gtFileName, "gt_2013-01-10.txt");
+        nh.param<std::string>("points_topic", pl_topic, "/velodyne_points");
         nh.param<int>("numberOfCores", numberOfCores, 2);
         nh.param<float>("downSampleValueGlobalMap", downSampleValueGlobalMap, 0.4);
         nh.param<float>("downSampleValueBlockMap", downSampleValueBlockMap, 0.2);
         nh.param<float>("blockSize", blockSize, 50.0);
+        nh.param<vector<double>>("gt_R_L", vec_gt_R_L, vector<double>());
+        nh.param<vector<double>>("gt_trans_L", vec_gt_trans_L, vector<double>());
+        nh.param<vector<double>>("L_T_gt", vec_L_T_gt, vector<double>());
+
+        gt_R_L << MAT_FROM_ARRAY(vec_gt_R_L);
+        gt_trans_L << VEC_FROM_ARRAY(vec_gt_trans_L);
+        L_T_gt << TransMAT_FROM_ARRAY(vec_L_T_gt);
+        
+
+        // cout << gt_R_body << endl;
 
         initializeParams();
 
         loadGroundTruth();
 
-        subCloud = nh.subscribe<sensor_msgs::PointCloud2>("/points_raw", 1, &bmGenerator::cloudHandler, this, ros::TransportHints().tcpNoDelay());
+        subCloud = nh.subscribe<sensor_msgs::PointCloud2>(pl_topic, 1, &bmGenerator::cloudHandler, this, ros::TransportHints().tcpNoDelay());
     }
 
     void initializeParams()
@@ -95,10 +115,15 @@ public:
         downSizeFilterGlobalMap.setLeafSize(downSampleValueGlobalMap, downSampleValueGlobalMap, downSampleValueGlobalMap);
         downSizeFilterBlockMap.setLeafSize(downSampleValueBlockMap, downSampleValueBlockMap, downSampleValueBlockMap);
         downSizeFilterGroundMap.setLeafSize(downSampleValueBlockMap, downSampleValueBlockMap, downSampleValueBlockMap);
-        R_gt_l << 0, -1, 0, 0, -1, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1;
+
+
+        // R_gt_l << 1, 0, 0, 0, 0, -1 , 0, 0, 0, 0, -1,0, 0, 0, 0, 1;
+        // R_gt_l << -0.0122693, -0.9999205, -0.0028972, 0.00679684, -0.9998251, 0.0123089, -0.0140843, 0.01542909, 0.0141188, 0.0027239, -0.9998966,0.95686191, 0, 0, 0, 1;
         keyCount = 0;
         blockID = 0;
         sumOfPoints = 0;
+        
+        
     }
 
     void cloudHandler(const sensor_msgs::PointCloud2ConstPtr& cloudIn)
@@ -114,13 +139,30 @@ public:
 
         double currT = cloudIn->header.stamp.toSec();
         pcl::PointCloud<PointType>::Ptr currPointCloud(new pcl::PointCloud<PointType>());
+         
+
         pcl::fromROSMsg(*cloudIn, *currPointCloud);
+
+
+
+        // std::cout << "ori point z:" << currPointCloud->points[0].z << std::endl;
+        for (int i=0; i < currPointCloud->size(); i++ ) {
+            Eigen::Vector3d P_L(currPointCloud->points[i].x, currPointCloud->points[i].y, currPointCloud->points[i].z);
+            Eigen::Vector3d P_gt(gt_R_L * P_L + gt_trans_L);
+            currPointCloud->points[i].x = P_gt(0);
+            currPointCloud->points[i].y = P_gt(1);
+            currPointCloud->points[i].z = P_gt(2);
+        }
+        // std::cout << "point z:" << currPointCloud->points[0].z << std::endl;
 
         std::pair<double, Eigen::Matrix4d> currData;
         while (!gtData.empty())
         {
             currData = gtData.front();
             double timeDiff = std::abs(currData.first - currT);
+
+ 
+
             if (firstStamp) // 'firstStamp' is a flag which denotes the 1st gt retrieved by current pointcloud
             {
                 if (updatePrevPoseFlag)
@@ -156,7 +198,9 @@ public:
 
     void loadGroundTruth()
     {
+        
         string filedst = std::getenv("HOME") + datasetDIR + gtFileName;
+        std::cout<<filedst<<std::endl;
         ifstream filein;
         filein.open(filedst, ios::in);
         if (!filein.is_open())
@@ -311,7 +355,13 @@ public:
         // R_gt_l = [ 0 -1  0 
         //           -1  0  0
         //            0  0 -1]
-        // Eigen::Matrix4d transformation = transformIn * R_gt_l;
+        // Eigen::Matrix4d 
+        // transformIn = transformIn * R_gt_l;
+
+        //将点云转到lidar系，gt_T_L的逆矩阵
+        transformIn = L_T_gt * transformIn;
+
+
 
         #pragma omp parallel for num_threads(numberOfCores)
         for (int i = 0; i < cloudSize; ++i)

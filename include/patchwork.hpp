@@ -99,6 +99,12 @@ public:
         node_handle_.getParam("/patchwork/czm/min_ranges_each_zone", min_ranges_);
         node_handle_.getParam("/patchwork/czm/elevation_thresholds", elevation_thr_);
         node_handle_.getParam("/patchwork/czm/flatness_thresholds", flatness_thr_);
+        // node_handle_.getParam("/patchwork/num_zones", num_zones_);
+        // node_handle_.getParam("/patchwork/num_sectors_each_zone", num_sectors_each_zone_);
+        // node_handle_.getParam("/patchwork/num_rings_each_zone", num_rings_each_zone_);
+        // node_handle_.getParam("/patchwork/min_ranges_each_zone", min_ranges_);
+        // node_handle_.getParam("/patchwork/elevation_thresholds", elevation_thr_);
+        // node_handle_.getParam("/patchwork/flatness_thresholds", flatness_thr_);
 
         ROS_INFO("\033[1;32mUprightness\33[0m threshold: %f", uprightness_thr_);
         ROS_INFO("\033[1;32mElevation\33[0m thresholds: %f %f %f %f", elevation_thr_[0],elevation_thr_[1], elevation_thr_[2], elevation_thr_[3]);
