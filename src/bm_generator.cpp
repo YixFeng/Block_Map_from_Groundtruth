@@ -31,8 +31,7 @@ vector<double>  vec_gt_R_L(9, 0.0);
 vector<double>  vec_gt_trans_L(3, 0.0);
 vector<double>  vec_L_T_gt(16, 0.0);
 
-class bmGenerator
-{
+class bmGenerator {
 public:
     ros::NodeHandle nh;
     ros::Subscriber subCloud;
@@ -76,8 +75,7 @@ public:
 
     boost::shared_ptr<PatchWork<PointXYZ>> PatchworkGroundSeg;
 public:
-    bmGenerator()
-    {
+    bmGenerator() {
         nh.param<std::string>("datasetDIR", datasetDIR, "/shared_volume/bloc_dataset/nclt/20130110/");
         nh.param<std::string>("gtFileName", gtFileName, "gt_2013-01-10.txt");
         nh.param<std::string>("points_topic", pl_topic, "/velodyne_points");
@@ -103,8 +101,7 @@ public:
         subCloud = nh.subscribe<sensor_msgs::PointCloud2>(pl_topic, 1, &bmGenerator::cloudHandler, this, ros::TransportHints().tcpNoDelay());
     }
 
-    void initializeParams()
-    {
+    void initializeParams() {
         PatchworkGroundSeg.reset(new PatchWork<PointXYZ>(&nh)); 
         globalMap.reset(new pcl::PointCloud<PointType>());
         centroidCloud.reset(new pcl::PointCloud<PointType>());
@@ -122,14 +119,10 @@ public:
         keyCount = 0;
         blockID = 0;
         sumOfPoints = 0;
-        
-        
     }
 
-    void cloudHandler(const sensor_msgs::PointCloud2ConstPtr& cloudIn)
-    {
-        if (keyCount < 10)
-        {
+    void cloudHandler(const sensor_msgs::PointCloud2ConstPtr& cloudIn) {
+        if (keyCount < 10) {
             keyCount++;
             return;
         }
@@ -156,17 +149,14 @@ public:
         // std::cout << "point z:" << currPointCloud->points[0].z << std::endl;
 
         std::pair<double, Eigen::Matrix4d> currData;
-        while (!gtData.empty())
-        {
+        while (!gtData.empty()) {
             currData = gtData.front();
             double timeDiff = std::abs(currData.first - currT);
 
  
 
-            if (firstStamp) // 'firstStamp' is a flag which denotes the 1st gt retrieved by current pointcloud
-            {
-                if (updatePrevPoseFlag)
-                {
+            if (firstStamp) {
+                if (updatePrevPoseFlag) {
                     prevPose = currData.second; // record the 1st pose for comparison which decides to output BMs
                     updatePrevPoseFlag = false;
                 }
@@ -174,15 +164,12 @@ public:
                 lastPose = currData.second;
                 firstStamp = false;
             }
-            else
-            {
-                if (timeDiff < minTdiff)
-                {
+            else {
+                if (timeDiff < minTdiff) {
                     minTdiff = timeDiff;
                     lastPose = currData.second;
                 } 
-                else 
-                {
+                else {
                     saveGlobalMap(currPointCloud);
 
                     generateBlockMap(currPointCloud);
@@ -196,22 +183,18 @@ public:
         keyCount = 0;
     }
 
-    void loadGroundTruth()
-    {
-        
+    void loadGroundTruth() {
         string filedst = std::getenv("HOME") + datasetDIR + gtFileName;
         std::cout<<filedst<<std::endl;
         ifstream filein;
         filein.open(filedst, ios::in);
-        if (!filein.is_open())
-        {
+        if (!filein.is_open()) {
             ROS_ERROR("can't read the gt file.");
             return;
         }
 
         double time, tx, ty, tz, qx, qy, qz, qw;
-        while(filein >> time >> tx >> ty >> tz >> qx >> qy >> qz >> qw)
-        {
+        while(filein >> time >> tx >> ty >> tz >> qx >> qy >> qz >> qw) {
             Eigen::Matrix4d tmpTransform = Eigen::Matrix4d::Identity();
             tmpTransform.block<3, 3>(0, 0) = Eigen::Quaterniond(qw, qx, qy, qz).toRotationMatrix();
             tmpTransform.topRightCorner<3, 1>() = Eigen::Vector3d(tx, ty, tz);
@@ -220,8 +203,7 @@ public:
         ROS_INFO("load %ld pose pairs", gtData.size());
     }
 
-    void saveGlobalMap(pcl::PointCloud<PointType>::Ptr cloudIn)
-    {
+    void saveGlobalMap(pcl::PointCloud<PointType>::Ptr cloudIn) {
         *globalMap += *transformPointCloud(cloudIn, lastPose);
         pcl::PointCloud<PointType>::Ptr outputCloud(new pcl::PointCloud<PointType>());
         downSizeFilterGlobalMap.setInputCloud(globalMap);
@@ -229,22 +211,19 @@ public:
         pcl::io::savePCDFileBinary(gmFileName, *outputCloud);
     }
 
-    void saveBlockMap(int saveID)
-    {
+    void saveBlockMap(int saveID) {
         boost::format saveFormat("%03d.pcd");
         pcl::PointCloud<PointType>::Ptr outputCloud(new pcl::PointCloud<PointType>());
         downSizeFilterBlockMap.setInputCloud(bmVec.at(saveID));
         downSizeFilterBlockMap.filter(*outputCloud);
         pcl::io::savePCDFileBinary(std::getenv("HOME") + datasetDIR + (saveFormat % saveID).str(), *outputCloud);
         cout << "BM ID: " << saveID << " Cloud size before DS: " << bmVec.at(saveID)->size() << " After DS: " << outputCloud->size() << "\nBMVector: " << endl;
-        for (int i = 0; i < bmVec.size(); i++)
-        {
+        for (int i = 0; i < bmVec.size(); i++) {
             cout << "BM ID: " << i << " Cloud size: " << bmVec.at(i)->size() << endl;
         }
     }
 
-    void saveGroundBM(int saveID)
-    {
+    void saveGroundBM(int saveID) {
         boost::format saveFormat("ground_%03d.pcd");
         pcl::PointCloud<PointXYZ>::Ptr outputCloud(new pcl::PointCloud<PointXYZ>());
         downSizeFilterGroundMap.setInputCloud(groundVec.at(saveID));
@@ -252,15 +231,12 @@ public:
         pcl::io::savePCDFileBinary(std::getenv("HOME") + datasetDIR + (saveFormat % saveID).str(), *outputCloud);
     }
 
-    void generateBlockMap(pcl::PointCloud<PointType>::Ptr cloudIn)
-    {
-        if (pow((lastPose(0,3) - prevPose(0,3)), 2) + pow((lastPose(1,3) - prevPose(1,3)), 2) + pow((lastPose(3,3) - prevPose(3,3)), 2) < blockSize * blockSize)
-        {
+    void generateBlockMap(pcl::PointCloud<PointType>::Ptr cloudIn) {
+        if (pow((lastPose(0,3) - prevPose(0,3)), 2) + pow((lastPose(1,3) - prevPose(1,3)), 2) + pow((lastPose(3,3) - prevPose(3,3)), 2) < blockSize * blockSize) {
             blockMap += *transformPointCloud(cloudIn, lastPose);
             groundBM += *transformPointCloudPatchwork(ExtractGroundPatchwork(cloudIn), lastPose);
         }
-        else
-        {
+        else {
             prevPose = lastPose;    // update the 1st pose of a new block map
 
             Eigen::Vector4d centroid;
@@ -276,8 +252,7 @@ public:
             pcl::copyPointCloud(blockMap, *tempMap);
             pcl::PointCloud<PointXYZ>::Ptr tempGroundBM(new pcl::PointCloud<PointXYZ>());
             pcl::copyPointCloud(groundBM, *tempGroundBM);
-            if (blockID == 1)   // 2nd block map, no need to check kd-tree
-            {
+            if (blockID == 1) {
                 sumOfPoints += tempMap->size();
                 bmVec.push_back(tempMap);
                 groundVec.push_back(tempGroundBM);
@@ -285,16 +260,13 @@ public:
                 saveGroundBM(blockID);
                 centroidCloud->push_back(centroidPoint);
                 centroidKDTree->setInputCloud(centroidCloud);
-            }
-            else if (blockID > 1)
-            {
+            } else if (blockID > 1) {
                 pointIdxNKNSearch.clear();
                 pointDistNKNSearch.clear();
                 centroidKDTree->nearestKSearch(centroidPoint, 1, pointIdxNKNSearch, pointDistNKNSearch);
                 float nearestDist = sqrt(pointDistNKNSearch[0]);
                 // cout << "nearestDist: " << nearestDist << endl;
-                if (nearestDist < 0.5 * blockSize && nearestDist > 0.1 * blockSize)
-                {
+                if (nearestDist < 0.5 * blockSize && nearestDist > 0.1 * blockSize) {
                     // add overlapping block to old block and recalculate centroid
                     cout << "\nDistance from the nearest BM is " << nearestDist << "m which is shorter than the half of blocksize. BM No." << blockID << " is merged into No." << pointIdxNKNSearch[0] << endl;
                     cout << "before merging, the size of bm: " << bmVec.at(pointIdxNKNSearch[0])->size() << endl;
@@ -313,13 +285,9 @@ public:
                     centroidCloud->points[pointIdxNKNSearch[0]].z = newCentroid[2];
                     centroidKDTree->setInputCloud(centroidCloud);
                     blockID -= 1;
-                }
-                else if (nearestDist <= 0.1 * blockSize) 
-                {
+                } else if (nearestDist <= 0.1 * blockSize) {
                     blockID -= 1;
-                }
-                else 
-                {
+                } else {
                     sumOfPoints += tempMap->size();
                     bmVec.push_back(tempMap);
                     groundVec.push_back(tempGroundBM);
@@ -328,9 +296,7 @@ public:
                     centroidCloud->push_back(centroidPoint);
                     centroidKDTree->setInputCloud(centroidCloud);
                 }
-            }
-            else // blockID == 0, 1st block map
-            {
+            } else {
                 sumOfPoints += tempMap->size();
                 bmVec.push_back(tempMap);
                 groundVec.push_back(tempGroundBM);
@@ -344,8 +310,7 @@ public:
         }
     }
 
-    pcl::PointCloud<PointType>::Ptr transformPointCloud(pcl::PointCloud<PointType>::Ptr cloudIn, Eigen::Matrix4d transformIn)
-    {
+    pcl::PointCloud<PointType>::Ptr transformPointCloud(pcl::PointCloud<PointType>::Ptr cloudIn, Eigen::Matrix4d transformIn) {
         pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
         int cloudSize = cloudIn->size();
         cloudOut->resize(cloudSize);
@@ -364,8 +329,7 @@ public:
 
 
         #pragma omp parallel for num_threads(numberOfCores)
-        for (int i = 0; i < cloudSize; ++i)
-        {
+        for (int i = 0; i < cloudSize; ++i) {
             const auto &pointFrom = cloudIn->points[i];
 
             cloudOut->points[i].x = transformIn(0,0) * pointFrom.x + transformIn(0,1) * pointFrom.y + transformIn(0,2) * pointFrom.z + transformIn(0,3);
@@ -376,15 +340,13 @@ public:
         return cloudOut;
     }
 
-    pcl::PointCloud<PointXYZ>::Ptr transformPointCloudPatchwork(pcl::PointCloud<PointXYZ>::Ptr cloudIn, Eigen::Matrix4d transformIn)
-    {
+    pcl::PointCloud<PointXYZ>::Ptr transformPointCloudPatchwork(pcl::PointCloud<PointXYZ>::Ptr cloudIn, Eigen::Matrix4d transformIn) {
         pcl::PointCloud<PointXYZ>::Ptr cloudOut(new pcl::PointCloud<PointXYZ>());
         int cloudSize = cloudIn->size();
         cloudOut->resize(cloudSize);
 
         #pragma omp parallel for num_threads(numberOfCores)
-        for (int i = 0; i < cloudSize; ++i)
-        {
+        for (int i = 0; i < cloudSize; ++i) {
             const auto &pointFrom = cloudIn->points[i];
 
             cloudOut->points[i].x = transformIn(0,0) * pointFrom.x + transformIn(0,1) * pointFrom.y + transformIn(0,2) * pointFrom.z + transformIn(0,3);
@@ -394,8 +356,7 @@ public:
         return cloudOut;
     }
 
-    pcl::PointCloud<PointXYZ>::Ptr ExtractGroundPatchwork(const pcl::PointCloud<PointType>::ConstPtr pc_in)
-    {
+    pcl::PointCloud<PointXYZ>::Ptr ExtractGroundPatchwork(const pcl::PointCloud<PointType>::ConstPtr pc_in) {
         pcl::PointCloud<PointXYZ>::Ptr pc_curr(new pcl::PointCloud<PointXYZ>());
         pcl::PointCloud<PointXYZ>::Ptr pc_ground(new pcl::PointCloud<PointXYZ>());
         pcl::PointCloud<PointXYZ>::Ptr pc_non_ground(new pcl::PointCloud<PointXYZ>());
@@ -410,8 +371,7 @@ public:
     }
 };
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     ros::init(argc, argv, "bm_generator");
     bmGenerator BM;
     ros::spin();
@@ -424,8 +384,7 @@ int main(int argc, char** argv)
     pcl::PointCloud<PointXYZ>::Ptr tempGroundBM(new pcl::PointCloud<PointXYZ>());
     pcl::copyPointCloud(BM.blockMap, *tempMap);
     pcl::copyPointCloud(BM.groundBM, *tempGroundBM);
-    if (tempMap->size() > 0.5 * BM.sumOfPoints / BM.blockID)
-    {
+    if (tempMap->size() > 0.5 * BM.sumOfPoints / BM.blockID) {
         pcl::PointCloud<PointType>::Ptr outputCloud(new pcl::PointCloud<PointType>());
         BM.downSizeFilterBlockMap.setInputCloud(tempMap);
         BM.downSizeFilterBlockMap.filter(*outputCloud);
