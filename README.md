@@ -6,6 +6,13 @@ The dataset directory has to follow this structure:
 ```angular2html
 Block-SLAM
 ├── gt
+│   ├── M2DGR
+│   │   ├── street_01
+│   │   │   ├── street_01_after.txt
+│   │   │   └── street_01.txt
+│   │   └── street_02
+│   │       ├── street_02_after.txt
+│   │       └── street_02.txt
 │   └── nclt
 │       ├── 20120115
 │       │   ├── groundtruth_2012-01-15.csv
@@ -17,6 +24,9 @@ Block-SLAM
 │           ├── groundtruth_2013-01-10.csv
 │           └── gt_2013-01-10.txt
 ├── map
+│   ├── M2DGR
+│   │   ├── street_01
+│   │   └── street_02
 │   └── nclt
 │       ├── 20120115
 │       ├── 20120429
