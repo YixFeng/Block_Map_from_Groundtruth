@@ -1,5 +1,8 @@
-datasetDIR: "/WorkSpace/4block_loc/evo/20120429/"
+datasetDIR: "/Block-SLAM" # start with "/"
+datasetName: "nclt"
+seq: "20120429"
 gtFileName: "gt_2012-04-29.txt"
+
 points_topic: "/points_raw"
 numberOfCores: 8
 downSampleValueGlobalMap: 0.4

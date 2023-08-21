@@ -1,0 +1,24 @@
+datasetDIR: "/Block-SLAM" # start with "/"
+datasetName: "M2DGR"
+seq: "street_02"
+gtFileName: "street_02_after.txt"
+
+points_topic: "/velodyne_points"
+numberOfCores: 24
+downSampleValueGlobalMap: 0.4
+downSampleValueBlockMap: 0.2
+blockSize: 100
+
+
+gt_trans_L: [ -0.16, 0, 0.15 ]
+
+gt_R_L: [ 1, 0, 0,
+          0, 1, 0,
+          0, 0, 1 ]
+
+L_T_gt: [ 1, 0, 0, 0.16,
+          0, 1, 0, 0,
+          0, 0, 1, -0.15,
+          0, 0, 0, 1 ]
+
+

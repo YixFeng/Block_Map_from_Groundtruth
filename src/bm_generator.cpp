@@ -38,6 +38,8 @@ public:
 
     // gt poses
     string datasetDIR;
+    string datasetName;
+    string seq;
     string gtFileName;
     string pl_topic;
     std::queue<std::pair<double, Eigen::Matrix4d>> gtData;
@@ -76,8 +78,10 @@ public:
     boost::shared_ptr<PatchWork<PointXYZ>> PatchworkGroundSeg;
 public:
     bmGenerator() {
-        nh.param<std::string>("datasetDIR", datasetDIR, "/shared_volume/bloc_dataset/nclt/20130110/");
-        nh.param<std::string>("gtFileName", gtFileName, "gt_2013-01-10.txt");
+        nh.param<std::string>("datasetDIR", datasetDIR, "/Block-SLAM");
+        nh.param<std::string>("datasetName", datasetName, "nclt");
+        nh.param<std::string>("seq", seq, "20120429");
+        nh.param<std::string>("gtFileName", gtFileName, "gt_2012-04-29.txt");
         nh.param<std::string>("points_topic", pl_topic, "/velodyne_points");
         nh.param<int>("numberOfCores", numberOfCores, 2);
         nh.param<float>("downSampleValueGlobalMap", downSampleValueGlobalMap, 0.4);
@@ -90,7 +94,6 @@ public:
         gt_R_L << MAT_FROM_ARRAY(vec_gt_R_L);
         gt_trans_L << VEC_FROM_ARRAY(vec_gt_trans_L);
         L_T_gt << TransMAT_FROM_ARRAY(vec_L_T_gt);
-        
 
         // cout << gt_R_body << endl;
 
@@ -108,14 +111,11 @@ public:
         centroidKDTree.reset(new pcl::KdTreeFLANN<PointType>());
         blockMap.clear();
         groundBM.clear();
-        gmFileName = std::getenv("HOME") + datasetDIR + "GlobalMap.pcd";
+        gmFileName = std::getenv("HOME") + datasetDIR + "/map/" + datasetName + "/" + seq + "/GlobalMap.pcd";
         downSizeFilterGlobalMap.setLeafSize(downSampleValueGlobalMap, downSampleValueGlobalMap, downSampleValueGlobalMap);
         downSizeFilterBlockMap.setLeafSize(downSampleValueBlockMap, downSampleValueBlockMap, downSampleValueBlockMap);
         downSizeFilterGroundMap.setLeafSize(downSampleValueBlockMap, downSampleValueBlockMap, downSampleValueBlockMap);
 
-
-        // R_gt_l << 1, 0, 0, 0, 0, -1 , 0, 0, 0, 0, -1,0, 0, 0, 0, 1;
-        // R_gt_l << -0.0122693, -0.9999205, -0.0028972, 0.00679684, -0.9998251, 0.0123089, -0.0140843, 0.01542909, 0.0141188, 0.0027239, -0.9998966,0.95686191, 0, 0, 0, 1;
         keyCount = 0;
         blockID = 0;
         sumOfPoints = 0;
@@ -132,11 +132,8 @@ public:
 
         double currT = cloudIn->header.stamp.toSec();
         pcl::PointCloud<PointType>::Ptr currPointCloud(new pcl::PointCloud<PointType>());
-         
 
         pcl::fromROSMsg(*cloudIn, *currPointCloud);
-
-
 
         // std::cout << "ori point z:" << currPointCloud->points[0].z << std::endl;
         for (int i=0; i < currPointCloud->size(); i++ ) {
@@ -184,7 +181,7 @@ public:
     }
 
     void loadGroundTruth() {
-        string filedst = std::getenv("HOME") + datasetDIR + gtFileName;
+        string filedst = std::getenv("HOME") + datasetDIR + "/gt/" + datasetName + "/" + seq + "/" + gtFileName;
         std::cout<<filedst<<std::endl;
         ifstream filein;
         filein.open(filedst, ios::in);
@@ -216,7 +213,7 @@ public:
         pcl::PointCloud<PointType>::Ptr outputCloud(new pcl::PointCloud<PointType>());
         downSizeFilterBlockMap.setInputCloud(bmVec.at(saveID));
         downSizeFilterBlockMap.filter(*outputCloud);
-        pcl::io::savePCDFileBinary(std::getenv("HOME") + datasetDIR + (saveFormat % saveID).str(), *outputCloud);
+        pcl::io::savePCDFileBinary(std::getenv("HOME") + datasetDIR + "/map/" + datasetName + "/" + seq + "/" + (saveFormat % saveID).str(), *outputCloud);
         cout << "BM ID: " << saveID << " Cloud size before DS: " << bmVec.at(saveID)->size() << " After DS: " << outputCloud->size() << "\nBMVector: " << endl;
         for (int i = 0; i < bmVec.size(); i++) {
             cout << "BM ID: " << i << " Cloud size: " << bmVec.at(i)->size() << endl;
@@ -228,7 +225,7 @@ public:
         pcl::PointCloud<PointXYZ>::Ptr outputCloud(new pcl::PointCloud<PointXYZ>());
         downSizeFilterGroundMap.setInputCloud(groundVec.at(saveID));
         downSizeFilterGroundMap.filter(*outputCloud);
-        pcl::io::savePCDFileBinary(std::getenv("HOME") + datasetDIR + (saveFormat % saveID).str(), *outputCloud);
+        pcl::io::savePCDFileBinary(std::getenv("HOME") + datasetDIR + "/map/" + datasetName + "/" + seq + "/" + (saveFormat % saveID).str(), *outputCloud);
     }
 
     void generateBlockMap(pcl::PointCloud<PointType>::Ptr cloudIn) {
@@ -315,18 +312,8 @@ public:
         int cloudSize = cloudIn->size();
         cloudOut->resize(cloudSize);
 
-        // R_w_gt is known. P_l denotes the pointcloud in lidar frame. 
-        // R_w_l = R_w_gt * R_gt_l.
-        // R_gt_l = [ 0 -1  0 
-        //           -1  0  0
-        //            0  0 -1]
-        // Eigen::Matrix4d 
-        // transformIn = transformIn * R_gt_l;
-
         //将点云转到lidar系，gt_T_L的逆矩阵
         transformIn = L_T_gt * transformIn;
-
-
 
         #pragma omp parallel for num_threads(numberOfCores)
         for (int i = 0; i < cloudSize; ++i) {
@@ -388,12 +375,12 @@ int main(int argc, char** argv) {
         pcl::PointCloud<PointType>::Ptr outputCloud(new pcl::PointCloud<PointType>());
         BM.downSizeFilterBlockMap.setInputCloud(tempMap);
         BM.downSizeFilterBlockMap.filter(*outputCloud);
-        pcl::io::savePCDFileBinary(std::getenv("HOME") + BM.datasetDIR + (saveFormat % BM.blockID).str(), *outputCloud);
+        pcl::io::savePCDFileBinary(std::getenv("HOME") + BM.datasetDIR + "/map/" + BM.datasetName + "/" + BM.seq + "/" + (saveFormat % BM.blockID).str(), *outputCloud);
 
         pcl::PointCloud<PointXYZ>::Ptr outputGroundCloud(new pcl::PointCloud<PointXYZ>());
         BM.downSizeFilterGroundMap.setInputCloud(tempGroundBM);
         BM.downSizeFilterGroundMap.filter(*outputGroundCloud);
-        pcl::io::savePCDFileBinary(std::getenv("HOME") + BM.datasetDIR + (saveGroundFormat % BM.blockID).str(), *outputGroundCloud);
+        pcl::io::savePCDFileBinary(std::getenv("HOME") + BM.datasetDIR + "/map/" + BM.datasetName + "/" + BM.seq + "/" + (saveGroundFormat % BM.blockID).str(), *outputGroundCloud);
 
         Eigen::Vector4d centroid;
         pcl::compute3DCentroid(BM.blockMap, centroid);
@@ -403,7 +390,7 @@ int main(int argc, char** argv) {
         centroidPoint.z = centroid[2];
         BM.centroidCloud->push_back(centroidPoint);
     }
-    pcl::io::savePCDFileBinary(std::getenv("HOME") + BM.datasetDIR + "CentroidCloud.pcd", *(BM.centroidCloud));
+    pcl::io::savePCDFileBinary(std::getenv("HOME") + BM.datasetDIR + "/map/" + BM.datasetName + "/" + BM.seq + "/" + "CentroidCloud.pcd", *(BM.centroidCloud));
 
     return 0;
 }

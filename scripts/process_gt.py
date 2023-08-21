@@ -3,8 +3,8 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 
-data_path = '/home/jzian/WorkSpace/Blockmap_gt/src/Block_Map_from_Groundtruth/data/ulhk_1.txt'
-out_path = '/home/jzian/WorkSpace/Blockmap_gt/src/Block_Map_from_Groundtruth/data/ulhk_1_process2.txt'
+data_path = '/home/yixfeng/Datasets/M2DGR/street_01/street_01.txt'
+out_path = '/home/yixfeng/Datasets/M2DGR/street_01/street_01_after.txt'
 if __name__ == "__main__":
     first_data = []
     out = [0, 0, 0, 0, 0, 0, 0, 0]

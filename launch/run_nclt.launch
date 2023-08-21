@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<launch>
+
+    <rosparam file="$(find bm_generator)/config/cfg_nclt.yaml" command="load" />
+    <rosparam file="$(find bm_generator)/config/patchwork/params.yaml" command="load" />
+
+    <node pkg="bm_generator" type="bm_generator" name="bm_generator" output="screen" />
+
+</launch>
